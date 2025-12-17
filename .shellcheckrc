@@ -1,0 +1,14 @@
+# ShellCheck configuration for scripting/ templates
+# See: https://github.com/koalaman/shellcheck
+
+# Disable checks that commonly fire for dynamic sourcing and template scripts
+# SC1090 — Can't follow non-constant source:
+#   Trigger: sourcing files via variables or computed paths (e.g. ". \"$SCRIPTDIR/__utils.sh\"").
+#   Reason: templates often use dynamic/runtime paths which static analysis cannot resolve.
+# SC1091 — Not following: file was not specified as input (or not found):
+#   Trigger: ShellCheck cannot locate the sourced file when running the linter (often resolved by running with -x).
+#   Reason: the file may exist only at runtime or be resolved via the shell; templates commonly trigger this.
+# SC2034 — Appears unused (unused variables):
+#   Trigger: variables are assigned but not referenced in the same file (may be intended for callers or when sourced).
+#   Reason: templates frequently declare variables for future use or to be used when the file is sourced.
+exclude=SC1090,SC1091,SC2034
