@@ -1,0 +1,8 @@
+# Default Claude skill clone list
+# Place one entry per line: <git-url> [dest-dir]
+
+# My personal skills
+https://github.com/Chogos/claude-skills.git
+
+# Terraform skill
+https://github.com/antonbabenko/terraform-skill.git
