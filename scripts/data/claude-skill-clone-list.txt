@@ -5,6 +5,7 @@
 
 # My personal skills (individual subdirectories)
 https://github.com/Chogos/claude-skills.git developing-helm-charts
+https://github.com/Chogos/claude-skills.git writing-dockerfiles
 https://github.com/Chogos/claude-skills.git writing-rego-policies
 https://github.com/Chogos/claude-skills.git writing-shell-scripts
 
