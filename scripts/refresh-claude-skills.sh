@@ -12,6 +12,7 @@ readonly SCRIPTDIR
 . "$SCRIPTDIR/__utils.sh"
 
 SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+REPOS_CACHE_DIR=""
 DRY_RUN=false
 VERBOSE=false
 CLONE_FILE=""
@@ -24,7 +25,7 @@ Usage: $(basename "$0") [options]
 Options:
   -n, --dry-run        Show what would be done, don't run git commands
   -v, --verbose        Print more output
-  -c, --clone-file F   Read clone list from file (lines: <git-url> [dest-dir])
+  -c, --clone-file F   Read clone list from file (lines: <git-url> [subpath])
   -h, --help           Show this help
 
 Description:
@@ -32,8 +33,9 @@ Description:
   For each repo the script will fetch, prune remotes and try to pull
   updates (using rebase + autostash). It will also init/update submodules.
 
-  If --clone-file is provided, missing directories will be cloned using
-  the file entries.
+  Clone file format:
+    <git-url>              Clone full repo into skills dir
+    <git-url> <subpath>    Clone repo to .repos cache, symlink subpath
 EOF
 }
 
@@ -63,6 +65,22 @@ parse_args() {
 	done
 }
 
+clone_full_repo() {
+	local url="$1" target="$2"
+	if [[ -d "$target" ]]; then
+		debug "Repo already cloned: $target"
+		return 0
+	fi
+	info "Cloning $url -> $target"
+	if ! run_cmd git clone --recurse-submodules --shallow-submodules --depth 1 "$url" "$target" >/dev/null 2>&1; then
+		warn "Clone failed for $target"
+		failed=$((failed + 1))
+		FAILED_LIST+=("$target")
+		return 1
+	fi
+	return 0
+}
+
 process_clone_file() {
 	if [[ -z "$CLONE_FILE" ]]; then
 		return
@@ -77,22 +95,45 @@ process_clone_file() {
 		# skip blank lines & comments
 		[[ -z "$line" || "$line" =~ ^# ]] && continue
 		url=$(awk '{print $1}' <<<"$line")
-		dest=$(awk '{print $2}' <<<"$line")
-		if [[ -z "$dest" ]]; then
-			repo_name=$(basename -s .git "$url")
-			dest="$repo_name"
-		fi
-		target="$SKILLS_DIR/$dest"
-		if [[ -d "$target" ]]; then
-			info "Exists, skipping clone: $target"
-			skipped=$((skipped + 1))
-			SKIPPED_LIST+=("$target")
-		else
-			info "Cloning $url -> $target"
-			if ! run_cmd git clone --recurse-submodules --shallow-submodules --depth 1 "$url" "$target" >/dev/null 2>&1; then
-				warn "Clone failed for $target"
+		subpath=$(awk '{print $2}' <<<"$line")
+		repo_name=$(basename -s .git "$url")
+
+		if [[ -n "$subpath" ]]; then
+			# Subpath mode: clone full repo into .repos cache, symlink subpath
+			mkdir -p "$REPOS_CACHE_DIR"
+			local cache_dir="$REPOS_CACHE_DIR/$repo_name"
+			clone_full_repo "$url" "$cache_dir" || continue
+
+			local src="$cache_dir/$subpath"
+			if [[ ! -d "$src" ]]; then
+				warn "Subpath '$subpath' not found in $repo_name"
 				failed=$((failed + 1))
-				FAILED_LIST+=("$target")
+				FAILED_LIST+=("$repo_name/$subpath")
+				continue
+			fi
+
+			local link="$SKILLS_DIR/$subpath"
+			if [[ -L "$link" ]]; then
+				info "Symlink exists, skipping: $link"
+				skipped=$((skipped + 1))
+				SKIPPED_LIST+=("$link")
+			elif [[ -e "$link" ]]; then
+				warn "Non-symlink already exists at $link, skipping"
+				skipped=$((skipped + 1))
+				SKIPPED_LIST+=("$link")
+			else
+				info "Linking $repo_name/$subpath -> $link"
+				run_cmd ln -s "$src" "$link"
+			fi
+		else
+			# Full repo mode: clone directly into skills dir
+			local target="$SKILLS_DIR/$repo_name"
+			if [[ -d "$target" ]]; then
+				info "Exists, skipping clone: $target"
+				skipped=$((skipped + 1))
+				SKIPPED_LIST+=("$target")
+			else
+				clone_full_repo "$url" "$target"
 			fi
 		fi
 	done <"$CLONE_FILE"
@@ -217,6 +258,7 @@ main() {
 	fi
 
 	mkdir -p "$SKILLS_DIR"
+	REPOS_CACHE_DIR="$SKILLS_DIR/.repos"
 	info "Using skills directory: $SKILLS_DIR"
 
 	# counters
@@ -234,8 +276,18 @@ main() {
 
 	process_clone_file
 
+	# refresh cached repos (subpath clones)
+	if [[ -d "$REPOS_CACHE_DIR" ]]; then
+		for d in "$REPOS_CACHE_DIR"/*; do
+			[[ -e "$d" ]] || continue
+			refresh_repo "$d"
+		done
+	fi
+
+	# refresh direct repos (skip symlinks — those point into .repos)
 	for d in "$SKILLS_DIR"/*; do
 		[[ -e "$d" ]] || continue
+		[[ -L "$d" ]] && continue
 		refresh_repo "$d"
 	done
 

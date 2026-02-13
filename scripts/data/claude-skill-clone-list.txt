@@ -1,8 +1,12 @@
 # Default Claude skill clone list
-# Place one entry per line: <git-url> [dest-dir]
+# Format: <git-url> [subpath]
+#   - No subpath: clone full repo into skills dir
+#   - With subpath: clone repo to .repos cache, symlink subpath into skills dir
 
-# My personal skills
-https://github.com/Chogos/claude-skills.git
+# My personal skills (individual subdirectories)
+https://github.com/Chogos/claude-skills.git helm
+https://github.com/Chogos/claude-skills.git rego
+https://github.com/Chogos/claude-skills.git shell
 
 # Terraform skill
 https://github.com/antonbabenko/terraform-skill.git
