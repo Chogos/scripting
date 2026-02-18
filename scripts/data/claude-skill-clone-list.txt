@@ -4,9 +4,15 @@
 #   - With subpath: clone repo to .repos cache, symlink subpath into skills dir
 
 # My personal skills (individual subdirectories)
+https://github.com/Chogos/claude-skills.git developing-backend-services
+https://github.com/Chogos/claude-skills.git developing-frontend-apps
 https://github.com/Chogos/claude-skills.git developing-helm-charts
+https://github.com/Chogos/claude-skills.git writing-aws-infrastructure
 https://github.com/Chogos/claude-skills.git writing-dockerfiles
+https://github.com/Chogos/claude-skills.git writing-golang
+https://github.com/Chogos/claude-skills.git writing-python
 https://github.com/Chogos/claude-skills.git writing-rego-policies
+https://github.com/Chogos/claude-skills.git writing-rust
 https://github.com/Chogos/claude-skills.git writing-shell-scripts
 
 # Terraform skill
