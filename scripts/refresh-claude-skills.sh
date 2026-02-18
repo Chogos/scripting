@@ -81,7 +81,7 @@ clone_full_repo() {
 	return 0
 }
 
-process_clone_file() {
+clone_repos() {
 	if [[ -z "$CLONE_FILE" ]]; then
 		return
 	fi
@@ -90,7 +90,7 @@ process_clone_file() {
 		die "Clone file '$CLONE_FILE' not found" 2
 	fi
 
-	info "Processing clone file: $CLONE_FILE"
+	info "Cloning repositories from: $CLONE_FILE"
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		# skip blank lines & comments
 		[[ -z "$line" || "$line" =~ ^# ]] && continue
@@ -99,32 +99,10 @@ process_clone_file() {
 		repo_name=$(basename -s .git "$url")
 
 		if [[ -n "$subpath" ]]; then
-			# Subpath mode: clone full repo into .repos cache, symlink subpath
+			# Subpath mode: clone full repo into .repos cache
 			mkdir -p "$REPOS_CACHE_DIR"
 			local cache_dir="$REPOS_CACHE_DIR/$repo_name"
-			clone_full_repo "$url" "$cache_dir" || continue
-
-			local src="$cache_dir/$subpath"
-			if [[ ! -d "$src" ]]; then
-				warn "Subpath '$subpath' not found in $repo_name"
-				failed=$((failed + 1))
-				FAILED_LIST+=("$repo_name/$subpath")
-				continue
-			fi
-
-			local link="$SKILLS_DIR/$subpath"
-			if [[ -L "$link" ]]; then
-				info "Symlink exists, skipping: $link"
-				skipped=$((skipped + 1))
-				SKIPPED_LIST+=("$link")
-			elif [[ -e "$link" ]]; then
-				warn "Non-symlink already exists at $link, skipping"
-				skipped=$((skipped + 1))
-				SKIPPED_LIST+=("$link")
-			else
-				info "Linking $repo_name/$subpath -> $link"
-				run_cmd ln -s "$src" "$link"
-			fi
+			clone_full_repo "$url" "$cache_dir"
 		else
 			# Full repo mode: clone directly into skills dir
 			local target="$SKILLS_DIR/$repo_name"
@@ -135,6 +113,47 @@ process_clone_file() {
 			else
 				clone_full_repo "$url" "$target"
 			fi
+		fi
+	done <"$CLONE_FILE"
+}
+
+create_symlinks() {
+	if [[ -z "$CLONE_FILE" ]]; then
+		return
+	fi
+
+	info "Creating symlinks for subpath entries"
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		# skip blank lines & comments
+		[[ -z "$line" || "$line" =~ ^# ]] && continue
+		url=$(awk '{print $1}' <<<"$line")
+		subpath=$(awk '{print $2}' <<<"$line")
+		repo_name=$(basename -s .git "$url")
+
+		# Only process subpath entries
+		[[ -z "$subpath" ]] && continue
+
+		local cache_dir="$REPOS_CACHE_DIR/$repo_name"
+		local src="$cache_dir/$subpath"
+		if [[ ! -d "$src" ]]; then
+			warn "Subpath '$subpath' not found in $repo_name"
+			failed=$((failed + 1))
+			FAILED_LIST+=("$repo_name/$subpath")
+			continue
+		fi
+
+		local link="$SKILLS_DIR/$subpath"
+		if [[ -L "$link" ]]; then
+			info "Symlink exists, skipping: $link"
+			skipped=$((skipped + 1))
+			SKIPPED_LIST+=("$link")
+		elif [[ -e "$link" ]]; then
+			warn "Non-symlink already exists at $link, skipping"
+			skipped=$((skipped + 1))
+			SKIPPED_LIST+=("$link")
+		else
+			info "Linking $repo_name/$subpath -> $link"
+			run_cmd ln -s "$src" "$link"
 		fi
 	done <"$CLONE_FILE"
 }
@@ -274,17 +293,17 @@ main() {
 	UPDATED_LIST=()
 	FAILED_LIST=()
 
-	process_clone_file
+	clone_repos
 
-	# refresh cached repos (subpath clones)
 	if [[ -d "$REPOS_CACHE_DIR" ]]; then
 		for d in "$REPOS_CACHE_DIR"/*; do
 			[[ -e "$d" ]] || continue
 			refresh_repo "$d"
 		done
 	fi
+	create_symlinks
 
-	# refresh direct repos (skip symlinks — those point into .repos)
+	# Refresh direct repos (skip symlinks — those point into .repos)
 	for d in "$SKILLS_DIR"/*; do
 		[[ -e "$d" ]] || continue
 		[[ -L "$d" ]] && continue
